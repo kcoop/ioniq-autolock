@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "types": ["node"],
+    "checkJs": true,
+    "strict": false,
+    "noEmit": true
+  },
+  "include": ["api/**/*.js", "scripts/**/*.js"]
+}

@@ -1,21 +1,5 @@
 import BlueLinky from 'bluelinky';
 
-const REQUIRED_ENV = [
-  'BLUELINK_USERNAME',
-  'BLUELINK_PASSWORD',
-  'BLUELINK_PIN',
-  'BLUELINK_REGION',
-  'BLUELINK_VIN',
-  'WEBHOOK_TOKEN',
-];
-
-function validateEnv() {
-  const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
-  if (missing.length > 0) {
-    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
-  }
-}
-
 function unauthorized(res, message = 'Unauthorized') {
   res.status(401).json({ ok: false, error: message });
 }
@@ -29,45 +13,43 @@ function serverError(res, message) {
 }
 
 export default async function handler(req, res) {
+  // Reject non-HTTPS in production (Vercel sets x-forwarded-proto)
+  const proto = req.headers['x-forwarded-proto'];
+  if (proto && proto !== 'https') {
+    return res.status(403).json({ ok: false, error: 'HTTPS required' });
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
 
-  // Token auth — accept from Authorization header (Bearer) or body/query token field
+  // Token auth — accept from Authorization header (Bearer) or body token field
   const authHeader = req.headers['authorization'] ?? '';
-  const bearerToken = authHeader.startsWith('Bearer ')
-    ? authHeader.slice(7)
-    : null;
-  const token = bearerToken ?? req.body?.token ?? req.query?.token;
+  const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  const token = bearerToken ?? req.body?.token;
 
   if (!token || token !== process.env.WEBHOOK_TOKEN) {
     return unauthorized(res);
   }
 
-  try {
-    validateEnv();
-  } catch (err) {
-    console.error(err.message);
-    return serverError(res, err.message);
+  // Credentials from request body
+  const { username, password, pin, vin } = req.body ?? {};
+  const region = process.env.BLUELINK_REGION;
+
+  const missingFields = ['username', 'password', 'pin', 'vin'].filter(
+    (k) => !req.body?.[k]
+  );
+  if (missingFields.length > 0) {
+    return badRequest(res, `Missing required fields: ${missingFields.join(', ')}`);
   }
 
-  const {
-    BLUELINK_USERNAME: username,
-    BLUELINK_PASSWORD: password,
-    BLUELINK_PIN: pin,
-    BLUELINK_REGION: region,
-    BLUELINK_VIN: vin,
-  } = process.env;
+  if (!region) {
+    return serverError(res, 'BLUELINK_REGION environment variable is not set');
+  }
 
   let client;
   try {
-    client = new BlueLinky({
-      username,
-      password,
-      pin,
-      region,
-      brand: 'hyundai',
-    });
+    client = new BlueLinky({ username, password, pin, region, brand: 'hyundai' });
 
     await new Promise((resolve, reject) => {
       client.on('ready', resolve);
