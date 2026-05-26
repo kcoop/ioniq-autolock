@@ -10,7 +10,6 @@
  * Usage:
  *   node scripts/generate-shortcut.js \
  *     --url https://your-project.vercel.app/api/lock \
- *     --encryption-key <64_char_hex_key> \
  *     --username <bluelink_email> \
  *     --password <bluelink_password> \
  *     --pin <4_digit_pin> \
@@ -18,8 +17,8 @@
  *     --region <US|CA|EU> \
  *     [--output ioniq-autolock.shortcut]
  *
- * Omit --encryption-key to have one generated for you.
- * Add the printed key to Vercel as the ENCRYPTION_KEY environment variable.
+ * A fresh ENCRYPTION_KEY is generated on every run and printed at the end.
+ * Add it to Vercel as the ENCRYPTION_KEY environment variable before using the shortcut.
  */
 
 import { createCipheriv, randomBytes } from 'crypto';
@@ -58,7 +57,6 @@ if (missing.length > 0) {
   console.error(
     'Usage: node scripts/generate-shortcut.js \\\n' +
       '  --url https://your-project.vercel.app/api/lock \\\n' +
-      '  --encryption-key <64_char_hex_key> \\\n' +
       '  --username <bluelink_email> \\\n' +
       '  --password <bluelink_password> \\\n' +
       '  --pin <4_digit_pin> \\\n' +
@@ -76,17 +74,7 @@ const outputPath = resolve(args.output ?? 'ioniq-autolock.shortcut');
 // Encryption
 // ---------------------------------------------------------------------------
 
-let encryptionKeyHex = args['encryption-key'];
-let keyWasGenerated = false;
-
-if (!encryptionKeyHex) {
-  encryptionKeyHex = randomBytes(32).toString('hex');
-  keyWasGenerated = true;
-} else if (!/^[0-9a-fA-F]{64}$/.test(encryptionKeyHex)) {
-  console.error('Error: --encryption-key must be a 64-character hex string (32 bytes).');
-  console.error('Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
-  process.exit(1);
-}
+const encryptionKeyHex = randomBytes(32).toString('hex');
 
 /**
  * Encrypts plaintext with AES-256-GCM.
@@ -236,16 +224,12 @@ try {
 }
 
 console.log(`Shortcut written to: ${outputPath} (${format})`);
-
-if (keyWasGenerated) {
-  console.log('');
-  console.log('A new encryption key was generated. Add it to Vercel as an environment variable:');
-  console.log('');
-  console.log(`  ENCRYPTION_KEY=${encryptionKeyHex}`);
-  console.log('');
-  console.log('Without this key the webhook cannot decrypt the payload — keep it secret.');
-}
-
+console.log('');
+console.log('Add this to Vercel as the ENCRYPTION_KEY environment variable:');
+console.log('');
+console.log(`  ENCRYPTION_KEY=${encryptionKeyHex}`);
+console.log('');
+console.log('Without this key the webhook cannot decrypt the payload — keep it secret.');
 console.log('');
 console.log('To install on your iPhone:');
 console.log('  1. AirDrop the file to your iPhone, or add it to iCloud Drive and open it there');

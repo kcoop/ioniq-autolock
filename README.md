@@ -6,9 +6,9 @@ Bluelink credentials (username, password, PIN, VIN) are AES-256-GCM encrypted at
 
 ## How it works
 
-`POST /api/lock` validates the bearer token, decrypts the credentials payload using `ENCRYPTION_KEY`, then authenticates with Hyundai Bluelink, checks whether the engine is running, and locks the doors if the car is powered down. If the engine is still on, the lock is skipped as a safety measure.
+`POST /api/lock` decrypts the credentials payload using `ENCRYPTION_KEY`, authenticates with Hyundai Bluelink, checks whether the engine is running, and locks the doors if the car is powered down. If the engine is still on, the lock is skipped as a safety measure.
 
-## Deploy to Vercel
+## Setup
 
 ### 1. Install dependencies
 
@@ -16,40 +16,17 @@ Bluelink credentials (username, password, PIN, VIN) are AES-256-GCM encrypted at
 npm install
 ```
 
-### 2. Push to GitHub
+### 2. Push to GitHub and deploy to Vercel
 
-Create a new GitHub repo and push this project to it.
+Create a new GitHub repo, push this project to it, then import it at [vercel.com](https://vercel.com). Deploy without setting any environment variables for now.
 
-### 3. Import to Vercel
+### 3. Generate the shortcut and encryption key
 
-Go to [vercel.com](https://vercel.com), import your GitHub repo, and deploy.
-
-### 4. Set environment variables
-
-In the Vercel dashboard under **Settings → Environment Variables**, add:
-
-| Variable | Description |
-|---|---|
-| `ENCRYPTION_KEY` | 64-char hex key used to decrypt the credentials payload |
-
-Generate the key:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-```
-
-Or omit `--encryption-key` when running the shortcut generator — it will create one and print it for you.
-
-## iOS Shortcut setup
-
-### Option A — generate the shortcut file (recommended)
-
-Run the generator script with your deployment URL and credentials:
+Run the generator with your deployment URL and Bluelink credentials:
 
 ```bash
 npm run generate-shortcut -- \
   --url https://your-project.vercel.app/api/lock \
-  --encryption-key <64_char_hex_key> \
   --username <bluelink_email> \
   --password <bluelink_password> \
   --pin <4_digit_pin> \
@@ -58,34 +35,27 @@ npm run generate-shortcut -- \
   --output ioniq-autolock.shortcut
 ```
 
-Omit `--encryption-key` to have one generated automatically — it will be printed at the end; add it to Vercel as `ENCRYPTION_KEY` before using the shortcut.
+This writes `ioniq-autolock.shortcut` (binary plist on macOS, XML plist otherwise — both importable) and prints a freshly generated `ENCRYPTION_KEY`. The shortcut file contains only an opaque encrypted blob — no plaintext credentials.
 
-This writes `ioniq-autolock.shortcut` to the project root (binary plist on macOS, XML plist otherwise — both are importable). The file contains only an opaque encrypted blob — no plaintext credentials. Then:
+### 4. Add the encryption key to Vercel
 
-1. AirDrop the file to your iPhone, or add it to iCloud Drive and open it from there
+In the Vercel dashboard under **Settings → Environment Variables**, add the key printed by the generator:
+
+| Variable | Description |
+|---|---|
+| `ENCRYPTION_KEY` | 64-char hex key printed by the generator |
+
+Redeploy after saving so the new variable takes effect.
+
+### 5. Install the shortcut on your iPhone
+
+1. AirDrop `ioniq-autolock.shortcut` to your iPhone, or add it to iCloud Drive and open it from there
 2. Tap **Add Shortcut** when prompted
 3. Go to **Automation → New Automation → CarPlay → Disconnects**
 4. Add a **Run Shortcut** action and select **ioniq-autolock**
 5. Disable **Ask Before Running**
 
 > If iOS blocks the import, go to **Settings → Shortcuts → Allow Untrusted Shortcuts** and enable it.
-
-### Option B — build it manually
-
-1. Open the **Shortcuts** app and go to **Automation**
-2. Create a new **Personal Automation** triggered by **CarPlay** → **Disconnects**
-3. Add a **Get Contents of URL** action with:
-   - **URL:** `https://your-project.vercel.app/api/lock`
-   - **Method:** `POST`
-   - **Request Body:** JSON with the following fields:
-     ```json
-     {
-       "payload": "<encrypted blob from the generator>"
-     }
-     ```
-4. Disable **Ask Before Running** so it fires automatically
-
-> The shortcut communicates over HTTPS, so the payload is encrypted in transit and your credentials are never stored on the server.
 
 ## API
 
