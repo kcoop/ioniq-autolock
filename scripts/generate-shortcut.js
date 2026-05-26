@@ -1,20 +1,28 @@
 #!/usr/bin/env node
 
 /**
- * Generates an Apple Shortcuts (.shortcut) file that POSTs credentials
- * to the ioniq-autolock webhook.
+ * Generates an Apple Shortcuts (.shortcut) file that POSTs an encrypted
+ * credentials payload to the ioniq-autolock webhook.
+ *
+ * Credentials are AES-256-GCM encrypted with a key that only lives in Vercel
+ * env vars — the shortcut file itself never contains plaintext credentials.
  *
  * Usage:
  *   node scripts/generate-shortcut.js \
  *     --url https://your-project.vercel.app/api/lock \
  *     --token <webhook_token> \
+ *     --encryption-key <64_char_hex_key> \
  *     --username <bluelink_email> \
  *     --password <bluelink_password> \
  *     --pin <4_digit_pin> \
  *     --vin <vehicle_vin> \
  *     [--output ioniq-autolock.shortcut]
+ *
+ * Omit --encryption-key to have one generated for you.
+ * Add the printed key to Vercel as the ENCRYPTION_KEY environment variable.
  */
 
+import { createCipheriv, randomBytes } from 'crypto';
 import { execSync } from 'child_process';
 import { writeFileSync } from 'fs';
 import { resolve } from 'path';
@@ -51,6 +59,7 @@ if (missing.length > 0) {
     'Usage: node scripts/generate-shortcut.js \\\n' +
       '  --url https://your-project.vercel.app/api/lock \\\n' +
       '  --token <webhook_token> \\\n' +
+      '  --encryption-key <64_char_hex_key> \\\n' +
       '  --username <bluelink_email> \\\n' +
       '  --password <bluelink_password> \\\n' +
       '  --pin <4_digit_pin> \\\n' +
@@ -62,6 +71,43 @@ if (missing.length > 0) {
 
 const { url, token, username, password, pin, vin } = args;
 const outputPath = resolve(args.output ?? 'ioniq-autolock.shortcut');
+
+// ---------------------------------------------------------------------------
+// Encryption
+// ---------------------------------------------------------------------------
+
+let encryptionKeyHex = args['encryption-key'];
+let keyWasGenerated = false;
+
+if (!encryptionKeyHex) {
+  encryptionKeyHex = randomBytes(32).toString('hex');
+  keyWasGenerated = true;
+} else if (!/^[0-9a-fA-F]{64}$/.test(encryptionKeyHex)) {
+  console.error('Error: --encryption-key must be a 64-character hex string (32 bytes).');
+  console.error('Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+  process.exit(1);
+}
+
+/**
+ * Encrypts plaintext with AES-256-GCM.
+ * Returns a base64url string: iv (12 bytes) + authTag (16 bytes) + ciphertext.
+ * @param {string} plaintext
+ * @param {string} keyHex
+ * @returns {string}
+ */
+function encrypt(plaintext, keyHex) {
+  const key = Buffer.from(keyHex, 'hex');
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return Buffer.concat([iv, authTag, ciphertext]).toString('base64url');
+}
+
+const payload = encrypt(
+  JSON.stringify({ username, password, pin, vin }),
+  encryptionKeyHex
+);
 
 // ---------------------------------------------------------------------------
 // Plist helpers
@@ -111,7 +157,9 @@ function dictionaryItem(key, value) {
 // Build the shortcut plist
 // ---------------------------------------------------------------------------
 
-const bodyFields = { token, username, password, pin, vin };
+// Shortcut body only carries the auth token and the opaque encrypted payload —
+// no plaintext credentials.
+const bodyFields = { token, payload };
 const dictionaryItems = Object.entries(bodyFields)
   .map(([k, v]) => dictionaryItem(k, v))
   .join('\n');
@@ -178,7 +226,6 @@ ${dictionaryItems}
 // Write output — convert to binary plist if plutil is available (macOS)
 // ---------------------------------------------------------------------------
 
-// Write XML plist first so plutil can read it
 writeFileSync(outputPath, plist, 'utf8');
 
 let format = 'XML plist';
@@ -190,6 +237,16 @@ try {
 }
 
 console.log(`Shortcut written to: ${outputPath} (${format})`);
+
+if (keyWasGenerated) {
+  console.log('');
+  console.log('A new encryption key was generated. Add it to Vercel as an environment variable:');
+  console.log('');
+  console.log(`  ENCRYPTION_KEY=${encryptionKeyHex}`);
+  console.log('');
+  console.log('Without this key the webhook cannot decrypt the payload — keep it secret.');
+}
+
 console.log('');
 console.log('To install on your iPhone:');
 console.log('  1. AirDrop the file to your iPhone, or add it to iCloud Drive and open it there');

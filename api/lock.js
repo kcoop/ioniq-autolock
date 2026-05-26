@@ -1,3 +1,4 @@
+import { createDecipheriv } from 'crypto';
 import BlueLinky from 'bluelinky';
 
 function unauthorized(res, message = 'Unauthorized') {
@@ -10,6 +11,24 @@ function badRequest(res, message) {
 
 function serverError(res, message) {
   res.status(500).json({ ok: false, error: message });
+}
+
+/**
+ * Decrypts an AES-256-GCM payload produced by the shortcut generator.
+ * Expects a base64url string encoding: iv (12 bytes) + authTag (16 bytes) + ciphertext.
+ * @param {string} encoded
+ * @param {string} keyHex
+ * @returns {string}
+ */
+function decrypt(encoded, keyHex) {
+  const key = Buffer.from(keyHex, 'hex');
+  const buf = Buffer.from(encoded, 'base64url');
+  const iv = buf.subarray(0, 12);
+  const authTag = buf.subarray(12, 28);
+  const ciphertext = buf.subarray(28);
+  const decipher = createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(authTag);
+  return decipher.update(ciphertext, undefined, 'utf8') + decipher.final('utf8');
 }
 
 export default async function handler(req, res) {
@@ -32,19 +51,33 @@ export default async function handler(req, res) {
     return unauthorized(res);
   }
 
-  // Credentials from request body
-  const { username, password, pin, vin } = req.body ?? {};
-  const region = process.env.BLUELINK_REGION;
-
-  const missingFields = ['username', 'password', 'pin', 'vin'].filter(
-    (k) => !req.body?.[k]
-  );
-  if (missingFields.length > 0) {
-    return badRequest(res, `Missing required fields: ${missingFields.join(', ')}`);
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  if (!encryptionKey) {
+    return serverError(res, 'ENCRYPTION_KEY environment variable is not set');
   }
 
+  const region = process.env.BLUELINK_REGION;
   if (!region) {
     return serverError(res, 'BLUELINK_REGION environment variable is not set');
+  }
+
+  // Decrypt credentials from the opaque payload field
+  const { payload } = req.body ?? {};
+  if (!payload) {
+    return badRequest(res, 'Missing required field: payload');
+  }
+
+  let credentials;
+  try {
+    credentials = JSON.parse(decrypt(payload, encryptionKey));
+  } catch {
+    return badRequest(res, 'Invalid payload — decryption failed');
+  }
+
+  const { username, password, pin, vin } = credentials;
+  const missingFields = ['username', 'password', 'pin', 'vin'].filter((k) => !credentials[k]);
+  if (missingFields.length > 0) {
+    return badRequest(res, `Payload missing required fields: ${missingFields.join(', ')}`);
   }
 
   let client;

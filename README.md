@@ -2,11 +2,11 @@
 
 A token-secured webhook that locks your Hyundai Ioniq 5's doors when triggered — designed to be called by an iOS Shortcut on CarPlay disconnect.
 
-Bluelink credentials (username, password, PIN, VIN) are sent in the POST body rather than stored on the server. All requests must be made over HTTPS so the payload is encrypted in transit.
+Bluelink credentials (username, password, PIN, VIN) are AES-256-GCM encrypted at shortcut generation time. The shortcut stores only an opaque ciphertext — plaintext credentials never leave your machine. The decryption key lives exclusively in Vercel environment variables. All requests are made over HTTPS.
 
 ## How it works
 
-`POST /api/lock` validates the bearer token, then uses the credentials from the request body to authenticate with Hyundai Bluelink, check whether the engine is running, and lock the doors if the car is powered down. If the engine is still on, the lock is skipped as a safety measure.
+`POST /api/lock` validates the bearer token, decrypts the credentials payload using `ENCRYPTION_KEY`, then authenticates with Hyundai Bluelink, checks whether the engine is running, and locks the doors if the car is powered down. If the engine is still on, the lock is skipped as a safety measure.
 
 ## Deploy to Vercel
 
@@ -31,13 +31,20 @@ In the Vercel dashboard under **Settings → Environment Variables**, add:
 | Variable | Description |
 |---|---|
 | `BLUELINK_REGION` | `US`, `CA`, or `EU` |
-| `WEBHOOK_TOKEN` | A secret token you generate (see below) |
+| `WEBHOOK_TOKEN` | Secret used to authenticate webhook requests |
+| `ENCRYPTION_KEY` | 64-char hex key used to decrypt the credentials payload |
 
-Generate a secure webhook token:
+Generate both secrets:
 
 ```bash
+# Webhook token
 openssl rand -hex 32
+
+# Encryption key
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
+
+Or omit `--encryption-key` when running the shortcut generator — it will create one and print it for you.
 
 ## iOS Shortcut setup
 
@@ -49,6 +56,7 @@ Run the generator script with your deployment URL and credentials:
 npm run generate-shortcut -- \
   --url https://your-project.vercel.app/api/lock \
   --token <webhook_token> \
+  --encryption-key <64_char_hex_key> \
   --username <bluelink_email> \
   --password <bluelink_password> \
   --pin <4_digit_pin> \
@@ -56,7 +64,9 @@ npm run generate-shortcut -- \
   --output ioniq-autolock.shortcut
 ```
 
-This writes `ioniq-autolock.shortcut` to the project root (binary plist on macOS, XML plist otherwise — both are importable). Then:
+Omit `--encryption-key` to have one generated automatically — it will be printed at the end; add it to Vercel as `ENCRYPTION_KEY` before using the shortcut.
+
+This writes `ioniq-autolock.shortcut` to the project root (binary plist on macOS, XML plist otherwise — both are importable). The file contains only an opaque encrypted blob — no plaintext credentials. Then:
 
 1. AirDrop the file to your iPhone, or add it to iCloud Drive and open it from there
 2. Tap **Add Shortcut** when prompted
@@ -77,10 +87,7 @@ This writes `ioniq-autolock.shortcut` to the project root (binary plist on macOS
      ```json
      {
        "token": "<your_webhook_token>",
-       "username": "<bluelink_email>",
-       "password": "<bluelink_password>",
-       "pin": "<4_digit_pin>",
-       "vin": "<your_vin>"
+       "payload": "<encrypted blob from the generator>"
      }
      ```
 4. Disable **Ask Before Running** so it fires automatically
@@ -102,12 +109,11 @@ Authorization: Bearer <your_webhook_token>
 ```json
 {
   "token": "<webhook_token>",
-  "username": "<bluelink_email>",
-  "password": "<bluelink_password>",
-  "pin": "<4_digit_pin>",
-  "vin": "<vehicle_vin>"
+  "payload": "<aes-256-gcm encrypted credentials>"
 }
 ```
+
+The `payload` field is a base64url string produced by the shortcut generator. It decrypts to `{"username","password","pin","vin"}` using the server-side `ENCRYPTION_KEY`.
 
 **Responses:**
 
