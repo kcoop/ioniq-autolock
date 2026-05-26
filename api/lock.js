@@ -46,6 +46,7 @@ export default async function handler(req, res) {
   }
 
   // Decrypt credentials from the opaque payload field
+  console.log('req.body:', JSON.stringify(req.body));
   const { payload } = req.body ?? {};
   if (!payload) {
     return badRequest(res, 'Missing required field: payload');
