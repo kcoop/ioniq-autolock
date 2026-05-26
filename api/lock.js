@@ -43,11 +43,6 @@ export default async function handler(req, res) {
     return serverError(res, 'ENCRYPTION_KEY environment variable is not set');
   }
 
-  const region = process.env.BLUELINK_REGION;
-  if (!region) {
-    return serverError(res, 'BLUELINK_REGION environment variable is not set');
-  }
-
   // Decrypt credentials from the opaque payload field
   const { payload } = req.body ?? {};
   if (!payload) {
@@ -61,8 +56,8 @@ export default async function handler(req, res) {
     return badRequest(res, 'Invalid payload — decryption failed');
   }
 
-  const { username, password, pin, vin } = credentials;
-  const missingFields = ['username', 'password', 'pin', 'vin'].filter((k) => !credentials[k]);
+  const { username, password, pin, vin, region } = credentials;
+  const missingFields = ['username', 'password', 'pin', 'vin', 'region'].filter((k) => !credentials[k]);
   if (missingFields.length > 0) {
     return badRequest(res, `Payload missing required fields: ${missingFields.join(', ')}`);
   }

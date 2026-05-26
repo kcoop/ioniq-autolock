@@ -30,7 +30,6 @@ In the Vercel dashboard under **Settings → Environment Variables**, add:
 
 | Variable | Description |
 |---|---|
-| `BLUELINK_REGION` | `US`, `CA`, or `EU` |
 | `ENCRYPTION_KEY` | 64-char hex key used to decrypt the credentials payload |
 
 Generate the key:
@@ -55,6 +54,7 @@ npm run generate-shortcut -- \
   --password <bluelink_password> \
   --pin <4_digit_pin> \
   --vin <your_vin> \
+  --region <US|CA|EU> \
   --output ioniq-autolock.shortcut
 ```
 
@@ -99,7 +99,7 @@ This writes `ioniq-autolock.shortcut` to the project root (binary plist on macOS
 }
 ```
 
-The `payload` field is a base64url string produced by the shortcut generator. It decrypts to `{"username","password","pin","vin"}` using the server-side `ENCRYPTION_KEY`.
+The `payload` field is a base64url string produced by the shortcut generator. It decrypts to `{"username","password","pin","vin","region"}` using the server-side `ENCRYPTION_KEY`.
 
 **Responses:**
 

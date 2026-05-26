@@ -15,6 +15,7 @@
  *     --password <bluelink_password> \
  *     --pin <4_digit_pin> \
  *     --vin <vehicle_vin> \
+ *     --region <US|CA|EU> \
  *     [--output ioniq-autolock.shortcut]
  *
  * Omit --encryption-key to have one generated for you.
@@ -30,7 +31,7 @@ import { resolve } from 'path';
 // Argument parsing
 // ---------------------------------------------------------------------------
 
-const REQUIRED_ARGS = ['url', 'username', 'password', 'pin', 'vin'];
+const REQUIRED_ARGS = ['url', 'username', 'password', 'pin', 'vin', 'region'];
 
 /**
  * @param {string[]} argv
@@ -62,12 +63,13 @@ if (missing.length > 0) {
       '  --password <bluelink_password> \\\n' +
       '  --pin <4_digit_pin> \\\n' +
       '  --vin <vehicle_vin> \\\n' +
+      '  --region <US|CA|EU> \\\n' +
       '  [--output ioniq-autolock.shortcut]'
   );
   process.exit(1);
 }
 
-const { url, username, password, pin, vin } = args;
+const { url, username, password, pin, vin, region } = args;
 const outputPath = resolve(args.output ?? 'ioniq-autolock.shortcut');
 
 // ---------------------------------------------------------------------------
@@ -103,7 +105,7 @@ function encrypt(plaintext, keyHex) {
 }
 
 const payload = encrypt(
-  JSON.stringify({ username, password, pin, vin }),
+  JSON.stringify({ username, password, pin, vin, region }),
   encryptionKeyHex
 );
 
