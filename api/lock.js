@@ -1,10 +1,6 @@
 import { createDecipheriv } from 'crypto';
 import BlueLinky from 'bluelinky';
 
-function unauthorized(res, message = 'Unauthorized') {
-  res.status(401).json({ ok: false, error: message });
-}
-
 function badRequest(res, message) {
   res.status(400).json({ ok: false, error: message });
 }
@@ -40,15 +36,6 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
-  }
-
-  // Token auth — accept from Authorization header (Bearer) or body token field
-  const authHeader = req.headers['authorization'] ?? '';
-  const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  const token = bearerToken ?? req.body?.token;
-
-  if (!token || token !== process.env.WEBHOOK_TOKEN) {
-    return unauthorized(res);
   }
 
   const encryptionKey = process.env.ENCRYPTION_KEY;

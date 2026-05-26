@@ -10,7 +10,6 @@
  * Usage:
  *   node scripts/generate-shortcut.js \
  *     --url https://your-project.vercel.app/api/lock \
- *     --token <webhook_token> \
  *     --encryption-key <64_char_hex_key> \
  *     --username <bluelink_email> \
  *     --password <bluelink_password> \
@@ -31,7 +30,7 @@ import { resolve } from 'path';
 // Argument parsing
 // ---------------------------------------------------------------------------
 
-const REQUIRED_ARGS = ['url', 'token', 'username', 'password', 'pin', 'vin'];
+const REQUIRED_ARGS = ['url', 'username', 'password', 'pin', 'vin'];
 
 /**
  * @param {string[]} argv
@@ -58,7 +57,6 @@ if (missing.length > 0) {
   console.error(
     'Usage: node scripts/generate-shortcut.js \\\n' +
       '  --url https://your-project.vercel.app/api/lock \\\n' +
-      '  --token <webhook_token> \\\n' +
       '  --encryption-key <64_char_hex_key> \\\n' +
       '  --username <bluelink_email> \\\n' +
       '  --password <bluelink_password> \\\n' +
@@ -69,7 +67,7 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-const { url, token, username, password, pin, vin } = args;
+const { url, username, password, pin, vin } = args;
 const outputPath = resolve(args.output ?? 'ioniq-autolock.shortcut');
 
 // ---------------------------------------------------------------------------
@@ -157,9 +155,8 @@ function dictionaryItem(key, value) {
 // Build the shortcut plist
 // ---------------------------------------------------------------------------
 
-// Shortcut body only carries the auth token and the opaque encrypted payload —
-// no plaintext credentials.
-const bodyFields = { token, payload };
+// Shortcut body carries only the opaque encrypted payload — no plaintext credentials.
+const bodyFields = { payload };
 const dictionaryItems = Object.entries(bodyFields)
   .map(([k, v]) => dictionaryItem(k, v))
   .join('\n');

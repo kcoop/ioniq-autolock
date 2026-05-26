@@ -31,16 +31,11 @@ In the Vercel dashboard under **Settings → Environment Variables**, add:
 | Variable | Description |
 |---|---|
 | `BLUELINK_REGION` | `US`, `CA`, or `EU` |
-| `WEBHOOK_TOKEN` | Secret used to authenticate webhook requests |
 | `ENCRYPTION_KEY` | 64-char hex key used to decrypt the credentials payload |
 
-Generate both secrets:
+Generate the key:
 
 ```bash
-# Webhook token
-openssl rand -hex 32
-
-# Encryption key
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
@@ -55,7 +50,6 @@ Run the generator script with your deployment URL and credentials:
 ```bash
 npm run generate-shortcut -- \
   --url https://your-project.vercel.app/api/lock \
-  --token <webhook_token> \
   --encryption-key <64_char_hex_key> \
   --username <bluelink_email> \
   --password <bluelink_password> \
@@ -86,7 +80,6 @@ This writes `ioniq-autolock.shortcut` to the project root (binary plist on macOS
    - **Request Body:** JSON with the following fields:
      ```json
      {
-       "token": "<your_webhook_token>",
        "payload": "<encrypted blob from the generator>"
      }
      ```
@@ -98,17 +91,10 @@ This writes `ioniq-autolock.shortcut` to the project root (binary plist on macOS
 
 ### `POST /api/lock`
 
-**Authentication:** Bearer token in the `Authorization` header, or a `token` field in the JSON body.
-
-```
-Authorization: Bearer <your_webhook_token>
-```
-
 **Request body:**
 
 ```json
 {
-  "token": "<webhook_token>",
   "payload": "<aes-256-gcm encrypted credentials>"
 }
 ```
@@ -121,8 +107,7 @@ The `payload` field is a base64url string produced by the shortcut generator. It
 |---|---|---|
 | `200` | `{"ok":true,"locked":true}` | Doors locked successfully |
 | `200` | `{"ok":true,"locked":false,"reason":"..."}` | Lock skipped (engine running) |
-| `400` | `{"ok":false,"error":"..."}` | Missing required fields |
-| `401` | `{"ok":false,"error":"Unauthorized"}` | Invalid or missing token |
+| `400` | `{"ok":false,"error":"..."}` | Missing or invalid payload |
 | `403` | `{"ok":false,"error":"HTTPS required"}` | Request made over plain HTTP |
 | `500` | `{"ok":false,"error":"..."}` | Bluelink auth or command failure |
 
