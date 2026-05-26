@@ -2,10 +2,12 @@ import { createDecipheriv } from 'crypto';
 import BlueLinky from 'bluelinky';
 
 function badRequest(res, message) {
+  console.error('[400]', message);
   res.status(400).json({ ok: false, error: message });
 }
 
 function serverError(res, message) {
+  console.error('[500]', message);
   res.status(500).json({ ok: false, error: message });
 }
 

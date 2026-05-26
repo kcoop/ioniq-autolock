@@ -31,11 +31,10 @@ npm run generate-shortcut -- \
   --password <bluelink_password> \
   --pin <4_digit_pin> \
   --vin <your_vin> \
-  --region <US|CA|EU> \
-  --output ioniq-autolock.shortcut
+  --region <US|CA|EU>
 ```
 
-This writes `ioniq-autolock.shortcut` (binary plist on macOS, XML plist otherwise — both importable) and prints a freshly generated `ENCRYPTION_KEY`. The shortcut file contains only an opaque encrypted blob — no plaintext credentials.
+This writes `ioniq-autolock.json` containing the webhook URL and encrypted payload, and prints a freshly generated `ENCRYPTION_KEY`.
 
 ### 4. Add the encryption key to Vercel
 
@@ -47,15 +46,18 @@ In the Vercel dashboard under **Settings → Environment Variables**, add the ke
 
 Redeploy after saving so the new variable takes effect.
 
-### 5. Install the shortcut on your iPhone
+### 5. Create the iOS Shortcut manually
 
-1. AirDrop `ioniq-autolock.shortcut` to your iPhone, or add it to iCloud Drive and open it from there
-2. Tap **Add Shortcut** when prompted
-3. Go to **Automation → New Automation → CarPlay → Disconnects**
-4. Add a **Run Shortcut** action and select **ioniq-autolock**
-5. Disable **Ask Before Running**
-
-> If iOS blocks the import, go to **Settings → Shortcuts → Allow Untrusted Shortcuts** and enable it.
+1. Open the **Shortcuts** app, tap **+**, and name it **ioniq-autolock**
+2. Add a **Get Contents of URL** action and configure it:
+   - **URL:** copy from `ioniq-autolock.json`
+   - **Method:** POST
+   - Tap **Show More** → **Request Body:** JSON
+   - Add a key `payload` with the value copied from `ioniq-autolock.json`
+3. Save the shortcut
+4. Go to **Automation → New Automation → CarPlay → Disconnects**
+5. Add a **Run Shortcut** action and select **ioniq-autolock**
+6. Disable **Ask Before Running**
 
 ## API
 

@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * Generates an Apple Shortcuts (.shortcut) file that POSTs an encrypted
- * credentials payload to the ioniq-autolock webhook.
+ * Encrypts Bluelink credentials for use in the ioniq-autolock iOS Shortcut.
  *
- * Credentials are AES-256-GCM encrypted with a key that only lives in Vercel
- * env vars — the shortcut file itself never contains plaintext credentials.
+ * Writes an encrypted payload file and prints the ENCRYPTION_KEY.
+ * Use the payload file when manually configuring the iOS Shortcut.
  *
  * Usage:
  *   node scripts/generate-shortcut.js \
@@ -15,14 +14,10 @@
  *     --pin <4_digit_pin> \
  *     --vin <vehicle_vin> \
  *     --region <US|CA|EU> \
- *     [--output ioniq-autolock.shortcut]
- *
- * A fresh ENCRYPTION_KEY is generated on every run and printed at the end.
- * Add it to Vercel as the ENCRYPTION_KEY environment variable before using the shortcut.
+ *     [--output ioniq-autolock.json]
  */
 
 import { createCipheriv, randomBytes } from 'crypto';
-import { execSync } from 'child_process';
 import { writeFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -62,13 +57,13 @@ if (missing.length > 0) {
       '  --pin <4_digit_pin> \\\n' +
       '  --vin <vehicle_vin> \\\n' +
       '  --region <US|CA|EU> \\\n' +
-      '  [--output ioniq-autolock.shortcut]'
+      '  [--output ioniq-autolock.json]'
   );
   process.exit(1);
 }
 
 const { url, username, password, pin, vin, region } = args;
-const outputPath = resolve(args.output ?? 'ioniq-autolock.shortcut');
+const outputPath = resolve(args.output ?? 'ioniq-autolock.json');
 
 // ---------------------------------------------------------------------------
 // Encryption
@@ -98,144 +93,24 @@ const payload = encrypt(
 );
 
 // ---------------------------------------------------------------------------
-// Plist helpers
+// Write payload file and print instructions
 // ---------------------------------------------------------------------------
 
-/** @param {string} str */
-function xmlEscape(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
+writeFileSync(outputPath, JSON.stringify({ url, payload }, null, 2), 'utf8');
 
-/** @param {string} value */
-function textTokenString(value) {
-  return `<dict>
-                            <key>Value</key>
-                            <dict>
-                                <key>attachmentsByRange</key>
-                                <dict/>
-                                <key>string</key>
-                                <string>${xmlEscape(value)}</string>
-                            </dict>
-                            <key>WFSerializationType</key>
-                            <string>WFTextTokenString</string>
-                        </dict>`;
-}
-
-/**
- * @param {string} key
- * @param {string} value
- */
-function dictionaryItem(key, value) {
-  return `                    <dict>
-                        <key>WFItemType</key>
-                        <integer>0</integer>
-                        <key>WFKey</key>
-                        ${textTokenString(key)}
-                        <key>WFValue</key>
-                        ${textTokenString(value)}
-                    </dict>`;
-}
-
-// ---------------------------------------------------------------------------
-// Build the shortcut plist
-// ---------------------------------------------------------------------------
-
-// Shortcut body carries only the opaque encrypted payload — no plaintext credentials.
-const bodyFields = { payload };
-const dictionaryItems = Object.entries(bodyFields)
-  .map(([k, v]) => dictionaryItem(k, v))
-  .join('\n');
-
-const plist = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>WFWorkflowClientVersion</key>
-    <string>2600</string>
-    <key>WFWorkflowMinimumClientVersion</key>
-    <integer>900</integer>
-    <key>WFWorkflowMinimumClientVersionString</key>
-    <string>900</string>
-    <key>WFWorkflowIcon</key>
-    <dict>
-        <key>WFWorkflowIconGlyphNumber</key>
-        <integer>59511</integer>
-        <key>WFWorkflowIconStartColor</key>
-        <integer>431817727</integer>
-    </dict>
-    <key>WFWorkflowImportQuestions</key>
-    <array/>
-    <key>WFWorkflowInputContentItemClasses</key>
-    <array/>
-    <key>WFWorkflowOutputContentItemClasses</key>
-    <array/>
-    <key>WFWorkflowTypes</key>
-    <array/>
-    <key>WFWorkflowActions</key>
-    <array>
-        <dict>
-            <key>WFWorkflowActionIdentifier</key>
-            <string>is.workflow.actions.downloadurl</string>
-            <key>WFWorkflowActionParameters</key>
-            <dict>
-                <key>ShowHeaders</key>
-                <false/>
-                <key>WFHTTPBodyType</key>
-                <string>JSON</string>
-                <key>WFHTTPMethod</key>
-                <string>POST</string>
-                <key>WFJSONValues</key>
-                <dict>
-                    <key>Value</key>
-                    <dict>
-                        <key>WFDictionaryFieldValueItems</key>
-                        <array>
-${dictionaryItems}
-                        </array>
-                    </dict>
-                    <key>WFSerializationType</key>
-                    <string>WFDictionaryFieldValue</string>
-                </dict>
-                <key>WFURL</key>
-                <string>${xmlEscape(url)}</string>
-            </dict>
-        </dict>
-    </array>
-</dict>
-</plist>`;
-
-// ---------------------------------------------------------------------------
-// Write output — convert to binary plist if plutil is available (macOS)
-// ---------------------------------------------------------------------------
-
-writeFileSync(outputPath, plist, 'utf8');
-
-let format = 'XML plist';
-try {
-  execSync(`plutil -convert binary1 "${outputPath}"`, { stdio: 'ignore' });
-  format = 'binary plist';
-} catch {
-  // plutil not available (non-macOS); XML plist is still importable
-}
-
-console.log(`Shortcut written to: ${outputPath} (${format})`);
 console.log('');
-console.log('Add this to Vercel as the ENCRYPTION_KEY environment variable:');
+console.log(`Payload written to: ${outputPath}`);
 console.log('');
-console.log(`  ENCRYPTION_KEY=${encryptionKeyHex}`);
+console.log('1. Add to Vercel (Settings → Environment Variables):');
 console.log('');
-console.log('Without this key the webhook cannot decrypt the payload — keep it secret.');
+console.log(`   ENCRYPTION_KEY=${encryptionKeyHex}`);
 console.log('');
-console.log('To install on your iPhone:');
-console.log('  1. AirDrop the file to your iPhone, or add it to iCloud Drive and open it there');
-console.log('  2. Tap "Add Shortcut" when prompted');
-console.log('  3. Go to Automation → New Automation → CarPlay → Disconnects');
-console.log('  4. Add a "Run Shortcut" action and select this shortcut');
-console.log('  5. Disable "Ask Before Running"');
+console.log('2. Create an iOS Shortcut with a "Get Contents of URL" action:');
 console.log('');
-console.log('Note: if iOS blocks import, enable Settings → Shortcuts → Allow Untrusted Shortcuts');
+console.log(`   URL:    ${url}`);
+console.log('   Method: POST');
+console.log('   Body:   JSON');
+console.log('   Key:    payload');
+console.log(`   Value:  (copy from ${outputPath})`);
+console.log('');
+console.log('Then create an Automation: CarPlay → Disconnects → Run Shortcut.');
