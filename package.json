@@ -1,0 +1,15 @@
+{
+  "name": "ioniq-autolock",
+  "version": "1.0.0",
+  "description": "Token-secured webhook to auto-lock Ioniq 5 on CarPlay disconnect",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vercel dev"
+  },
+  "dependencies": {
+    "bluelinky": "^8.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
