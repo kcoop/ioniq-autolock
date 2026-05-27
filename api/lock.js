@@ -29,6 +29,22 @@ function decrypt(encoded, keyHex) {
   return decipher.update(ciphertext, undefined, 'utf8') + decipher.final('utf8');
 }
 
+/**
+ * @param {import('http').IncomingMessage} req
+ * @returns {Promise<Record<string, unknown>>}
+ */
+function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', (chunk) => { raw += chunk; });
+    req.on('end', () => {
+      try { resolve(raw ? JSON.parse(raw) : {}); }
+      catch { resolve({}); }
+    });
+    req.on('error', reject);
+  });
+}
+
 export default async function handler(req, res) {
   // Reject non-HTTPS in production (Vercel sets x-forwarded-proto)
   const proto = req.headers['x-forwarded-proto'];
@@ -45,12 +61,9 @@ export default async function handler(req, res) {
     return serverError(res, 'ENCRYPTION_KEY environment variable is not set');
   }
 
-  // Decrypt credentials from the opaque payload field
-  console.error('content-type:', req.headers['content-type']);
-  console.error('req.body type:', typeof req.body);
-  console.error('req.body:', JSON.stringify(req.body));
-  const { payload } = req.body ?? {};
-  if (!payload) {
+  const body = await parseBody(req);
+  const { payload } = body;
+  if (!payload || typeof payload !== 'string') {
     return badRequest(res, 'Missing required field: payload');
   }
 
@@ -73,10 +86,10 @@ export default async function handler(req, res) {
 
     await new Promise((resolve, reject) => {
       client.on('ready', resolve);
-      client.on('error', reject);
+      client.on('error', (/** @type {unknown} */ err) => reject(err ?? new Error('Unknown BlueLinky error')));
     });
   } catch (err) {
-    console.error('BlueLinky login failed:', err.message);
+    console.error('BlueLinky login failed:', err?.message ?? err);
     return serverError(res, 'Failed to authenticate with Bluelink');
   }
 
